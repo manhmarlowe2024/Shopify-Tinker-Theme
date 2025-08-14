@@ -1,0 +1,666 @@
+{% doc %}
+  @prompt
+    parents category and child categories, divide page to 2 side, left side for menswear and right side for womenswear, below menswear and womenswear is the smaller categories
+
+{% enddoc %}
+{% assign ai_gen_id = block.id | replace: '_', '' | downcase %}
+
+{% style %}
+  .ai-category-split-{{ ai_gen_id }} {
+    display: flex;
+    flex-direction: column;
+    gap: {{ block.settings.section_gap }}px;
+    padding: {{ block.settings.section_padding }}px;
+    background-color: {{ block.settings.background_color }};
+  }
+
+  .ai-category-main-{{ ai_gen_id }} {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: {{ block.settings.main_gap }}px;
+  }
+
+  .ai-category-side-{{ ai_gen_id }} {
+    text-align: center;
+    padding: {{ block.settings.side_padding }}px;
+    background-color: {{ block.settings.side_background_color }};
+    border-radius: {{ block.settings.border_radius }}px;
+    transition: transform 0.3s ease;
+  }
+
+  .ai-category-side-{{ ai_gen_id }}:hover {
+    transform: translateY(-2px);
+  }
+
+  .ai-category-title-{{ ai_gen_id }} {
+    font-size: {{ block.settings.title_size }}px;
+    color: {{ block.settings.title_color }};
+    margin: 0 0 {{ block.settings.title_margin }}px 0;
+    font-weight: 600;
+  }
+
+  .ai-category-image-{{ ai_gen_id }} {
+    width: 100%;
+    height: {{ block.settings.image_height }}px;
+    object-fit: cover;
+    border-radius: {{ block.settings.image_border_radius }}px;
+    margin-bottom: {{ block.settings.image_margin }}px;
+  }
+
+  .ai-category-image-placeholder-{{ ai_gen_id }} {
+    width: 100%;
+    height: {{ block.settings.image_height }}px;
+    background-color: #f4f4f4;
+    border-radius: {{ block.settings.image_border_radius }}px;
+    margin-bottom: {{ block.settings.image_margin }}px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .ai-category-image-placeholder-{{ ai_gen_id }} svg {
+    width: 60%;
+    height: 60%;
+    opacity: 0.3;
+  }
+
+  .ai-category-link-{{ ai_gen_id }} {
+    display: inline-block;
+    padding: 12px 24px;
+    background-color: {{ block.settings.button_color }};
+    color: {{ block.settings.button_text_color }};
+    text-decoration: none;
+    border-radius: {{ block.settings.button_border_radius }}px;
+    font-weight: 500;
+    transition: background-color 0.3s ease;
+  }
+
+  .ai-category-link-{{ ai_gen_id }}:hover {
+    background-color: {{ block.settings.button_hover_color }};
+  }
+
+  .ai-subcategories-{{ ai_gen_id }} {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+    gap: {{ block.settings.subcategory_gap }}px;
+  }
+
+  .ai-subcategory-item-{{ ai_gen_id }} {
+    text-align: center;
+    padding: {{ block.settings.subcategory_padding }}px;
+    background-color: {{ block.settings.subcategory_background_color }};
+    border-radius: {{ block.settings.subcategory_border_radius }}px;
+    transition: transform 0.3s ease;
+  }
+
+  .ai-subcategory-item-{{ ai_gen_id }}:hover {
+    transform: translateY(-1px);
+  }
+
+  .ai-subcategory-image-{{ ai_gen_id }} {
+    width: 100%;
+    height: {{ block.settings.subcategory_image_height }}px;
+    object-fit: cover;
+    border-radius: {{ block.settings.subcategory_image_border_radius }}px;
+    margin-bottom: 12px;
+  }
+
+  .ai-subcategory-image-placeholder-{{ ai_gen_id }} {
+    width: 100%;
+    height: {{ block.settings.subcategory_image_height }}px;
+    background-color: #f4f4f4;
+    border-radius: {{ block.settings.subcategory_image_border_radius }}px;
+    margin-bottom: 12px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .ai-subcategory-image-placeholder-{{ ai_gen_id }} svg {
+    width: 50%;
+    height: 50%;
+    opacity: 0.3;
+  }
+
+  .ai-subcategory-title-{{ ai_gen_id }} {
+    font-size: {{ block.settings.subcategory_title_size }}px;
+    color: {{ block.settings.subcategory_title_color }};
+    margin: 0 0 8px 0;
+    font-weight: 500;
+  }
+
+  .ai-subcategory-link-{{ ai_gen_id }} {
+    color: {{ block.settings.subcategory_link_color }};
+    text-decoration: none;
+    font-size: 14px;
+    font-weight: 500;
+  }
+
+  .ai-subcategory-link-{{ ai_gen_id }}:hover {
+    text-decoration: underline;
+  }
+
+  @media screen and (max-width: 768px) {
+    .ai-category-main-{{ ai_gen_id }} {
+      grid-template-columns: 1fr;
+      gap: {{ block.settings.main_gap | times: 0.75 }}px;
+    }
+
+    .ai-subcategories-{{ ai_gen_id }} {
+      grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+      gap: {{ block.settings.subcategory_gap | times: 0.75 }}px;
+    }
+
+    .ai-category-title-{{ ai_gen_id }} {
+      font-size: {{ block.settings.title_size | times: 0.9 }}px;
+    }
+  }
+{% endstyle %}
+
+<div class="ai-category-split-{{ ai_gen_id }}" {{ block.shopify_attributes }}>
+  <div class="ai-category-main-{{ ai_gen_id }}">
+    <div class="ai-category-side-{{ ai_gen_id }}">
+      {% if block.settings.menswear_image %}
+        <img
+          src="{{ block.settings.menswear_image | image_url: width: 600 }}"
+          alt="{{ block.settings.menswear_image.alt | escape }}"
+          class="ai-category-image-{{ ai_gen_id }}"
+          loading="lazy"
+          width="600"
+          height="{{ block.settings.image_height }}"
+        >
+      {% else %}
+        <div class="ai-category-image-placeholder-{{ ai_gen_id }}">
+          {{ 'collection-apparel-1' | placeholder_svg_tag }}
+        </div>
+      {% endif %}
+      
+      <h2 class="ai-category-title-{{ ai_gen_id }}">{{ block.settings.menswear_title }}</h2>
+      
+      {% if block.settings.menswear_collection %}
+        <a href="{{ block.settings.menswear_collection.url }}" class="ai-category-link-{{ ai_gen_id }}">
+          {{ block.settings.menswear_button_text }}
+        </a>
+      {% endif %}
+    </div>
+
+    <div class="ai-category-side-{{ ai_gen_id }}">
+      {% if block.settings.womenswear_image %}
+        <img
+          src="{{ block.settings.womenswear_image | image_url: width: 600 }}"
+          alt="{{ block.settings.womenswear_image.alt | escape }}"
+          class="ai-category-image-{{ ai_gen_id }}"
+          loading="lazy"
+          width="600"
+          height="{{ block.settings.image_height }}"
+        >
+      {% else %}
+        <div class="ai-category-image-placeholder-{{ ai_gen_id }}">
+          {{ 'collection-apparel-1' | placeholder_svg_tag }}
+        </div>
+      {% endif %}
+      
+      <h2 class="ai-category-title-{{ ai_gen_id }}">{{ block.settings.womenswear_title }}</h2>
+      
+      {% if block.settings.womenswear_collection %}
+        <a href="{{ block.settings.womenswear_collection.url }}" class="ai-category-link-{{ ai_gen_id }}">
+          {{ block.settings.womenswear_button_text }}
+        </a>
+      {% endif %}
+    </div>
+  </div>
+
+  {% if block.settings.show_subcategories %}
+    <div class="ai-subcategories-{{ ai_gen_id }}">
+      {% for i in (1..6) %}
+        {% liquid
+          assign collection_key = 'subcategory_' | append: i | append: '_collection'
+          assign title_key = 'subcategory_' | append: i | append: '_title'
+          assign image_key = 'subcategory_' | append: i | append: '_image'
+          
+          assign collection = block.settings[collection_key]
+          assign title = block.settings[title_key]
+          assign image = block.settings[image_key]
+        %}
+        
+        {% if collection or title != blank %}
+          <div class="ai-subcategory-item-{{ ai_gen_id }}">
+            {% if image %}
+              <img
+                src="{{ image | image_url: width: 300 }}"
+                alt="{{ image.alt | escape }}"
+                class="ai-subcategory-image-{{ ai_gen_id }}"
+                loading="lazy"
+                width="300"
+                height="{{ block.settings.subcategory_image_height }}"
+              >
+            {% else %}
+              <div class="ai-subcategory-image-placeholder-{{ ai_gen_id }}">
+                {{ 'collection-apparel-1' | placeholder_svg_tag }}
+              </div>
+            {% endif %}
+            
+            <h3 class="ai-subcategory-title-{{ ai_gen_id }}">
+              {% if title != blank %}
+                {{ title }}
+              {% elsif collection %}
+                {{ collection.title }}
+              {% endif %}
+            </h3>
+            
+            {% if collection %}
+              <a href="{{ collection.url }}" class="ai-subcategory-link-{{ ai_gen_id }}">
+                Shop Now
+              </a>
+            {% endif %}
+          </div>
+        {% endif %}
+      {% endfor %}
+    </div>
+  {% endif %}
+</div>
+
+{% schema %}
+{
+  "name": "Category Split Layout",
+  "settings": [
+    {
+      "type": "header",
+      "content": "Menswear Section"
+    },
+    {
+      "type": "text",
+      "id": "menswear_title",
+      "label": "Menswear title",
+      "default": "Menswear"
+    },
+    {
+      "type": "image_picker",
+      "id": "menswear_image",
+      "label": "Menswear image"
+    },
+    {
+      "type": "collection",
+      "id": "menswear_collection",
+      "label": "Menswear collection"
+    },
+    {
+      "type": "text",
+      "id": "menswear_button_text",
+      "label": "Menswear button text",
+      "default": "Shop Menswear"
+    },
+    {
+      "type": "header",
+      "content": "Womenswear Section"
+    },
+    {
+      "type": "text",
+      "id": "womenswear_title",
+      "label": "Womenswear title",
+      "default": "Womenswear"
+    },
+    {
+      "type": "image_picker",
+      "id": "womenswear_image",
+      "label": "Womenswear image"
+    },
+    {
+      "type": "collection",
+      "id": "womenswear_collection",
+      "label": "Womenswear collection"
+    },
+    {
+      "type": "text",
+      "id": "womenswear_button_text",
+      "label": "Womenswear button text",
+      "default": "Shop Womenswear"
+    },
+    {
+      "type": "header",
+      "content": "Subcategories"
+    },
+    {
+      "type": "checkbox",
+      "id": "show_subcategories",
+      "label": "Show subcategories",
+      "default": true
+    },
+    {
+      "type": "text",
+      "id": "subcategory_1_title",
+      "label": "Subcategory 1 title"
+    },
+    {
+      "type": "image_picker",
+      "id": "subcategory_1_image",
+      "label": "Subcategory 1 image"
+    },
+    {
+      "type": "collection",
+      "id": "subcategory_1_collection",
+      "label": "Subcategory 1 collection"
+    },
+    {
+      "type": "text",
+      "id": "subcategory_2_title",
+      "label": "Subcategory 2 title"
+    },
+    {
+      "type": "image_picker",
+      "id": "subcategory_2_image",
+      "label": "Subcategory 2 image"
+    },
+    {
+      "type": "collection",
+      "id": "subcategory_2_collection",
+      "label": "Subcategory 2 collection"
+    },
+    {
+      "type": "text",
+      "id": "subcategory_3_title",
+      "label": "Subcategory 3 title"
+    },
+    {
+      "type": "image_picker",
+      "id": "subcategory_3_image",
+      "label": "Subcategory 3 image"
+    },
+    {
+      "type": "collection",
+      "id": "subcategory_3_collection",
+      "label": "Subcategory 3 collection"
+    },
+    {
+      "type": "text",
+      "id": "subcategory_4_title",
+      "label": "Subcategory 4 title"
+    },
+    {
+      "type": "image_picker",
+      "id": "subcategory_4_image",
+      "label": "Subcategory 4 image"
+    },
+    {
+      "type": "collection",
+      "id": "subcategory_4_collection",
+      "label": "Subcategory 4 collection"
+    },
+    {
+      "type": "text",
+      "id": "subcategory_5_title",
+      "label": "Subcategory 5 title"
+    },
+    {
+      "type": "image_picker",
+      "id": "subcategory_5_image",
+      "label": "Subcategory 5 image"
+    },
+    {
+      "type": "collection",
+      "id": "subcategory_5_collection",
+      "label": "Subcategory 5 collection"
+    },
+    {
+      "type": "text",
+      "id": "subcategory_6_title",
+      "label": "Subcategory 6 title"
+    },
+    {
+      "type": "image_picker",
+      "id": "subcategory_6_image",
+      "label": "Subcategory 6 image"
+    },
+    {
+      "type": "collection",
+      "id": "subcategory_6_collection",
+      "label": "Subcategory 6 collection"
+    },
+    {
+      "type": "header",
+      "content": "Colors"
+    },
+    {
+      "type": "color",
+      "id": "background_color",
+      "label": "Background color",
+      "default": "#ffffff"
+    },
+    {
+      "type": "color",
+      "id": "side_background_color",
+      "label": "Main section background",
+      "default": "#f8f8f8"
+    },
+    {
+      "type": "color",
+      "id": "subcategory_background_color",
+      "label": "Subcategory background",
+      "default": "#ffffff"
+    },
+    {
+      "type": "color",
+      "id": "title_color",
+      "label": "Title color",
+      "default": "#000000"
+    },
+    {
+      "type": "color",
+      "id": "subcategory_title_color",
+      "label": "Subcategory title color",
+      "default": "#000000"
+    },
+    {
+      "type": "color",
+      "id": "button_color",
+      "label": "Button color",
+      "default": "#000000"
+    },
+    {
+      "type": "color",
+      "id": "button_text_color",
+      "label": "Button text color",
+      "default": "#ffffff"
+    },
+    {
+      "type": "color",
+      "id": "button_hover_color",
+      "label": "Button hover color",
+      "default": "#333333"
+    },
+    {
+      "type": "color",
+      "id": "subcategory_link_color",
+      "label": "Subcategory link color",
+      "default": "#000000"
+    },
+    {
+      "type": "header",
+      "content": "Layout"
+    },
+    {
+      "type": "range",
+      "id": "section_padding",
+      "min": 0,
+      "max": 100,
+      "step": 5,
+      "unit": "px",
+      "label": "Section padding",
+      "default": 40
+    },
+    {
+      "type": "range",
+      "id": "section_gap",
+      "min": 20,
+      "max": 80,
+      "step": 10,
+      "unit": "px",
+      "label": "Section gap",
+      "default": 40
+    },
+    {
+      "type": "range",
+      "id": "main_gap",
+      "min": 10,
+      "max": 60,
+      "step": 5,
+      "unit": "px",
+      "label": "Main sections gap",
+      "default": 30
+    },
+    {
+      "type": "range",
+      "id": "subcategory_gap",
+      "min": 10,
+      "max": 40,
+      "step": 5,
+      "unit": "px",
+      "label": "Subcategory gap",
+      "default": 20
+    },
+    {
+      "type": "range",
+      "id": "side_padding",
+      "min": 10,
+      "max": 60,
+      "step": 5,
+      "unit": "px",
+      "label": "Main section padding",
+      "default": 30
+    },
+    {
+      "type": "range",
+      "id": "subcategory_padding",
+      "min": 10,
+      "max": 40,
+      "step": 5,
+      "unit": "px",
+      "label": "Subcategory padding",
+      "default": 20
+    },
+    {
+      "type": "header",
+      "content": "Typography"
+    },
+    {
+      "type": "range",
+      "id": "title_size",
+      "min": 20,
+      "max": 60,
+      "step": 2,
+      "unit": "px",
+      "label": "Title size",
+      "default": 32
+    },
+    {
+      "type": "range",
+      "id": "title_margin",
+      "min": 10,
+      "max": 40,
+      "step": 2,
+      "unit": "px",
+      "label": "Title margin bottom",
+      "default": 20
+    },
+    {
+      "type": "range",
+      "id": "subcategory_title_size",
+      "min": 14,
+      "max": 28,
+      "step": 2,
+      "unit": "px",
+      "label": "Subcategory title size",
+      "default": 18
+    },
+    {
+      "type": "header",
+      "content": "Images"
+    },
+    {
+      "type": "range",
+      "id": "image_height",
+      "min": 200,
+      "max": 500,
+      "step": 25,
+      "unit": "px",
+      "label": "Main image height",
+      "default": 300
+    },
+    {
+      "type": "range",
+      "id": "image_margin",
+      "min": 10,
+      "max": 40,
+      "step": 5,
+      "unit": "px",
+      "label": "Main image margin bottom",
+      "default": 20
+    },
+    {
+      "type": "range",
+      "id": "subcategory_image_height",
+      "min": 100,
+      "max": 250,
+      "step": 25,
+      "unit": "px",
+      "label": "Subcategory image height",
+      "default": 150
+    },
+    {
+      "type": "range",
+      "id": "border_radius",
+      "min": 0,
+      "max": 20,
+      "step": 2,
+      "unit": "px",
+      "label": "Border radius",
+      "default": 8
+    },
+    {
+      "type": "range",
+      "id": "image_border_radius",
+      "min": 0,
+      "max": 20,
+      "step": 2,
+      "unit": "px",
+      "label": "Image border radius",
+      "default": 6
+    },
+    {
+      "type": "range",
+      "id": "subcategory_border_radius",
+      "min": 0,
+      "max": 20,
+      "step": 2,
+      "unit": "px",
+      "label": "Subcategory border radius",
+      "default": 6
+    },
+    {
+      "type": "range",
+      "id": "subcategory_image_border_radius",
+      "min": 0,
+      "max": 20,
+      "step": 2,
+      "unit": "px",
+      "label": "Subcategory image border radius",
+      "default": 4
+    },
+    {
+      "type": "range",
+      "id": "button_border_radius",
+      "min": 0,
+      "max": 30,
+      "step": 2,
+      "unit": "px",
+      "label": "Button border radius",
+      "default": 6
+    }
+  ],
+  "presets": [
+    {
+      "name": "Category Split Layout"
+    }
+  ]
+}
+{% endschema %}
