@@ -103,15 +103,18 @@
       {% unless preorder_variant.available %}disabled{% endunless %}
     >
       <span class="preorder-text">
-        <span class="svg-wrapper preorder-icon">
+        {% comment %} <span class="svg-wrapper preorder-icon">
           {{- 'icon-clock.svg' | inline_asset_content -}}
-        </span>
+        </span> {% endcomment %}
         <span class="preorder-text__content">
           {% if preorder_variant.available %}
-            Pre-order - {{ preorder_variant.price | money }}
+            Add Pre-order - {{ preorder_variant.price | money }}
           {% else %}
             Pre-order - Unavailable
           {% endif %}
+        </span>
+        <span>
+          Wait & Save: Estimated to ship Oct 31
         </span>
       </span>
       <span class="preorder-text--added" aria-hidden="true">
@@ -172,7 +175,8 @@
 
   .preorder-text {
     display: flex;
-    gap: var(--gap-2xs);
+    flex-direction: column;
+    /* gap: var(--gap-2xs); */
     align-items: center;
     justify-content: center;
     transition: all var(--animation-speed) var(--animation-easing);
@@ -181,6 +185,11 @@
   .preorder-added .preorder-text {
     opacity: 0;
     transform: translateY(-1em);
+  }
+
+  .preorder-text__content {
+    font-weight: bold;
+    text-transform: uppercase;
   }
 
   .preorder-text--added {
