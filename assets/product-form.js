@@ -1,6 +1,6 @@
 import { Component } from '@theme/component';
 import { fetchConfig, onAnimationEnd, preloadImage } from '@theme/utilities';
-import { ThemeEvents, CartAddEvent, CartErrorEvent, VariantUpdateEvent } from '@theme/events';
+import { ThemeEvents, CartAddEvent, CartUpdateEvent, CartErrorEvent, VariantUpdateEvent } from '@theme/events';
 import { cartPerformance } from '@theme/performance';
 import { morph } from '@theme/morph';
 
@@ -687,7 +687,7 @@ class PreorderButtonComponent extends Component {
           currency: Theme.currency?.active || 'USD'
         }).format(variant.price / 100);
         
-        priceElement.textContent = `Pre-order - ${formattedPrice}`;
+        priceElement.textContent = `Add Pre-order - ${formattedPrice}`;
       } else {
         priceElement.textContent = 'Pre-order - Unavailable';
       }
@@ -735,6 +735,9 @@ class PreorderButtonComponent extends Component {
 
     // Get quantity from the main product form or default to 1
     const quantity = this.#getSelectedQuantity();
+    
+    // Trigger fly-to-cart animation
+    this.#animateFlyToCart(button);
 
     try {
       // Prepare form data
@@ -800,11 +803,11 @@ class PreorderButtonComponent extends Component {
           sections: result.sections
         });
         
+        
+
+
         document.dispatchEvent(cartUpdateEvent);
         window.dispatchEvent(cartUpdateEvent);
-
-        // Trigger fly-to-cart animation
-        this.#animateFlyToCart(button);
 
         console.log(`Successfully added pre-order item to cart (quantity: ${actualItemCount})`);
       }
@@ -817,7 +820,7 @@ class PreorderButtonComponent extends Component {
       setTimeout(() => {
         button.disabled = false;
         this.classList.remove('preorder-added');
-      }, PREORDER_ANIMATION_DURATION + 500);
+      }, 500);
 
       // Track performance
       cartPerformance.measureFromEvent('preorder-add:user-action', event);
