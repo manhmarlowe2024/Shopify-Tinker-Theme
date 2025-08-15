@@ -34,6 +34,15 @@
       assign add_to_cart_text = 'products.product.unavailable' | t
     endif
   endif
+
+  # Check if product has pre-order option
+  assign preorder_handle = closest.product.handle | append: '-pre-order'
+  assign preorder_product = all_products[preorder_handle]
+
+  assign has_preorder = false
+  if preorder_product != blank
+    assign has_preorder = true
+  endif
 %}
 
 <span
@@ -64,7 +73,7 @@
           value="{{ product.selected_or_first_available_variant.id }}"
         >
         <div
-          class="product-form-buttons spacing-style{% if block.settings.stacking %} product-form-buttons--stacked{% endif %}"
+          class="product-form-buttons spacing-style{% if block.settings.stacking %} product-form-buttons--stacked{% endif %} {% if has_preorder %} product-form-buttons--with-preorder{% endif %}"
           style="{% render 'spacing-style', settings: block.settings %}"
         >
           {% content_for 'block', type: 'quantity', id: 'quantity' %}
@@ -75,6 +84,15 @@
             can_add_to_cart: can_add_to_cart,
             add_to_cart_text: add_to_cart_text
           %}
+
+          {% comment %} Add Pre-order Button {% endcomment %}
+          {% if has_preorder %}
+            <div class="preorder-button-wrapper">
+              {% render 'preorder-button', product: product, class: 'button-secondary' %}
+            </div>
+          {% endif %}
+
+
           <span
             class="product-form-text__error hidden"
             ref="addToCartTextError"
@@ -83,6 +101,7 @@
               {{- 'icon-error.svg' | inline_asset_content -}}
             </span>
           </span>
+
           {% content_for 'block',
             type: 'accelerated-checkout',
             id: 'accelerated-checkout',
@@ -231,6 +250,34 @@
 
   .product-form-buttons--stacked > *:not(.quantity-selector) {
     flex-basis: 51%; /* Force the buttons to be on separate rows */
+  }
+
+  /* Pre-order button specific styles */
+  .product-form-buttons--with-preorder {
+    flex-direction: column;
+    gap: var(--gap-xs);
+  }
+
+  .product-form-buttons--with-preorder > .preorder-button-wrapper {
+    flex: 1 1 auto;
+    margin-top: var(--gap-xs);
+  }
+
+  .preorder-button-wrapper .button {
+    width: 100%;
+    padding-inline: var(--padding-4xl);
+    padding-block: var(--padding-lg);
+  }
+
+  @media screen and (min-width: 750px) {
+    .product-form-buttons--with-preorder {
+      flex-direction: row;
+      gap: var(--gap-sm);
+    }
+
+    .product-form-buttons--with-preorder > .preorder-button-wrapper {
+      margin-top: 0;
+    }
   }
 
   .quantity-selector {
