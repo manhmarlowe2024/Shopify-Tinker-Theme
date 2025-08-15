@@ -1,0 +1,221 @@
+{% comment %}
+  Create this as: snippets/preorder-button.liquid
+  
+  This finds a separate pre-order product and matches variants by SKU
+  
+  Usage: {% render 'preorder-button', product: product, class: 'button-secondary' %}
+{% endcomment %}
+
+{%- liquid
+  assign preorder_product = null
+  assign preorder_variant = null
+  assign current_variant_sku = product.selected_or_first_available_variant.sku
+  
+  # Strategy 1: Look for product with handle containing 'pre-order'
+  assign preorder_handle = product.handle | append: '-pre-order'
+  assign preorder_product = all_products[preorder_handle]
+  
+  # Strategy 2: If not found, look for product with 'preorder-' prefix
+  if preorder_product == blank
+    assign preorder_handle = 'preorder-' | append: product.handle
+    assign preorder_product = collections.all.products[preorder_handle]
+  endif
+  
+  # Strategy 3: Search by metafield or tag (if you use them)
+  if preorder_product == blank
+    for product_item in collections.all.products
+      if product_item.tags contains 'preorder-for-' and product_item.tags contains product.handle
+        assign preorder_product = product_item
+        break
+      endif
+    endfor
+  endif
+  
+  # If we found a pre-order product, find the matching variant
+  if preorder_product != blank
+    # Try to find exact SKU match first
+    for variant in preorder_product.variants
+      if variant.sku == current_variant_sku
+        assign preorder_variant = variant
+        break
+      endif
+    endfor
+    
+    # If no exact match, try pattern matching
+    if preorder_variant == blank
+      for variant in preorder_product.variants
+        # Remove common prefixes/suffixes to find base SKU
+        assign base_sku = current_variant_sku | remove: '-REGULAR' | remove: '-REG'
+        assign preorder_base_sku = variant.sku | remove: '-PREORDER' | remove: '-PRE'
+        
+        if base_sku == preorder_base_sku
+          assign preorder_variant = variant
+          break
+        endif
+      endfor
+    endif
+    
+    # Fallback: use first available variant if no SKU match
+    if preorder_variant == blank
+      assign preorder_variant = preorder_product.selected_or_first_available_variant
+    endif
+  endif
+-%}
+
+{% comment %} Debug info - remove in production {% endcomment %}
+<div style="background: #f0f0f0; padding: 10px; margin: 10px 0; font-size: 12px;">
+    <strong>Debug Info:</strong><br>
+    Current Product: {{ product.handle }}<br>
+    Current Variant SKU: {{ current_variant_sku }}<br>
+    Preorder Product Found: {{ preorder_product.handle | default: 'None' }}<br>
+    Preorder Variant SKU: {{ preorder_variant.sku | default: 'None' }}<br>
+    Preorder Variant ID: {{ preorder_variant.id | default: 'None' }}
+</div>
+
+{% if preorder_product and preorder_variant %}
+  <preorder-button-component
+    data-variant-id="{{ preorder_variant.id }}"
+    data-preorder-product-id="{{ preorder_product.id }}"
+    data-original-product-id="{{ product.id }}"
+    data-section-id="{{ section.id }}"
+    data-current-variant-sku="{{ current_variant_sku }}"
+  >
+    <button
+      type="button"
+      class="button {{ class | default: 'button-secondary' }} preorder-button"
+      data-preorder-button
+      {% unless preorder_variant.available %}disabled{% endunless %}
+    >
+      <span class="preorder-text">
+        <span class="svg-wrapper preorder-icon">
+          {{- 'icon-clock.svg' | inline_asset_content -}}
+        </span>
+        <span class="preorder-text__content">
+          Pre-order - {{ preorder_variant.price | money }}
+        </span>
+      </span>
+      <span class="preorder-text--added" aria-hidden="true">
+        <span class="svg-wrapper preorder-icon--added">
+          {{- 'icon-checkmark.svg' | inline_asset_content -}}
+        </span>
+        <span>Added to cart!</span>
+      </span>
+    </button>
+    
+    {% comment %} Hidden info about the preorder product {% endcomment %}
+    <div class="preorder-product-info" style="display: none;">
+      <span data-preorder-product-title>{{ preorder_product.title }}</span>
+      <span data-preorder-variant-title>{{ preorder_variant.title }}</span>
+    </div>
+  </preorder-button-component>
+  
+  {% comment %} Optional: Show preorder product info {% endcomment %}
+  {% if block.settings.show_preorder_info %}
+    <div class="preorder-info">
+      <p class="preorder-info__title">Pre-order Details:</p>
+      <ul class="preorder-info__list">
+        <li>Product: {{ preorder_product.title }}</li>
+        <li>Variant: {{ preorder_variant.title }}</li>
+        <li>Expected ship date: {{ preorder_product.metafields.custom.ship_date | default: 'TBA' }}</li>
+        <li>Pre-order items ship separately</li>
+      </ul>
+    </div>
+  {% endif %}
+  
+{% else %}
+  {% comment %} No preorder product found {% endcomment %}
+  {% if settings.show_preorder_debug %}
+    <div class="preorder-not-available">
+      <p>Pre-order not available for this product.</p>
+    </div>
+  {% endif %}
+{% endif %}
+
+{% stylesheet %}
+  .preorder-button {
+    position: relative;
+    overflow: hidden;
+  }
+
+  .preorder-text {
+    display: flex;
+    gap: var(--gap-2xs);
+    align-items: center;
+    justify-content: center;
+    animation-duration: var(--animation-speed);
+    animation-timing-function: var(--animation-easing);
+    animation-fill-mode: forwards;
+    transition: opacity var(--animation-speed) var(--animation-easing);
+  }
+
+  .preorder-added .preorder-text {
+    animation-name: preorder-slide-out;
+  }
+
+  .preorder-text--added {
+    position: absolute;
+    inset: 0;
+    animation-duration: var(--animation-speed);
+    animation-timing-function: var(--animation-easing);
+    animation-fill-mode: forwards;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    opacity: 0;
+    gap: var(--gap-2xs);
+  }
+
+  .preorder-added .preorder-text--added {
+    animation-name: preorder-slide-in;
+  }
+
+  @keyframes preorder-slide-in {
+    from {
+      opacity: 0;
+      transform: translateY(0.5em);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  }
+
+  @keyframes preorder-slide-out {
+    from {
+      transform: translateY(0);
+      opacity: 1;
+    }
+    to {
+      transform: translateY(-1em);
+      opacity: 0;
+    }
+  }
+
+  .preorder-button:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
+
+  .preorder-info {
+    margin-top: var(--spacing-sm);
+    padding: var(--spacing-sm);
+    background-color: rgb(var(--color-background-secondary));
+    border-radius: var(--border-radius);
+    border-left: 3px solid rgb(var(--color-accent));
+  }
+
+  .preorder-info__title {
+    font-weight: 600;
+    margin-bottom: var(--spacing-xs);
+  }
+
+  .preorder-info__list {
+    margin: 0;
+    padding-left: var(--spacing-md);
+  }
+
+  .preorder-info__list li {
+    margin-bottom: var(--spacing-2xs);
+    font-size: var(--font-size-sm);
+  }
+{% endstylesheet %}
