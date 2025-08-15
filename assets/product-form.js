@@ -448,8 +448,7 @@ if (!customElements.get('fly-to-cart')) {
 }
 
 
-
-
+export const PREORDER_ANIMATION_DURATION = 2000;
 
 /**
  * A custom element that manages a pre-order button for separate pre-order products.
@@ -465,6 +464,9 @@ class PreorderButtonComponent extends Component {
   /** @type {AbortController} */
   #abortController = new AbortController();
 
+  /** @type {Object | null} */
+  #preorderProduct = null;
+
   connectedCallback() {
     super.connectedCallback();
     
@@ -472,12 +474,19 @@ class PreorderButtonComponent extends Component {
     
     const button = this.querySelector('[data-preorder-button]');
     if (button) {
-      button.addEventListener('click', this.handleClick.bind(this), { signal });
+      button.addEventListener('click', this.#handleClick.bind(this), { signal });
     }
 
-    // Listen for variant updates on the main product
-    const target = this.closest('.shopify-section, dialog, product-card');
+    // Listen for variant updates on the main product - use more specific targeting
+    const target = this.closest('.shopify-section') || 
+                   this.closest('.product-information') || 
+                   document;
+    
     target?.addEventListener(ThemeEvents.variantUpdate, this.#onVariantUpdate.bind(this), { signal });
+    target?.addEventListener(ThemeEvents.variantSelected, this.#onVariantSelected.bind(this), { signal });
+    
+    // Also listen on document level to catch all variant updates
+    document.addEventListener(ThemeEvents.variantUpdate, this.#onVariantUpdate.bind(this), { signal });
   }
 
   disconnectedCallback() {
@@ -490,135 +499,221 @@ class PreorderButtonComponent extends Component {
   }
 
   /**
+   * Handle variant selection (disable button during update)
+   */
+  #onVariantSelected = () => {
+    const button = this.querySelector('[data-preorder-button]');
+    if (button) {
+      button.disabled = true;
+    }
+  };
+
+  /**
    * Handle variant updates from the main product
    * @param {VariantUpdateEvent} event 
    */
   async #onVariantUpdate(event) {
+    // Debug logging
+    console.log('Preorder component received variant update:', event.detail);
+    
+    // Check if this update is for our product
+    const eventProductId = event.detail.data.productId;
+    const ourProductId = this.dataset.originalProductId;
+    
+    console.log('Event product ID:', eventProductId, 'Our product ID:', ourProductId);
+    
     // Only process if this is for our product
-    if (event.detail.data.productId !== this.dataset.originalProductId) {
+    if (eventProductId !== ourProductId) {
+      console.log('Variant update not for our product, ignoring');
       return;
     }
 
     const selectedVariant = event.detail.resource;
-    if (!selectedVariant) return;
+    if (!selectedVariant) {
+      console.log('No selected variant in event');
+      this.#updateButtonState(null);
+      return;
+    }
 
     const newVariantSku = selectedVariant.sku;
     const currentSku = this.dataset.currentVariantSku;
 
-    // If the SKU hasn't changed, do nothing
-    if (newVariantSku === currentSku) return;
+    console.log('New SKU:', newVariantSku, 'Current SKU:', currentSku);
+
+    // If the SKU hasn't changed, just update the button state
+    if (newVariantSku === currentSku) {
+      console.log('SKU unchanged, updating button state only');
+      this.#updateButtonState(selectedVariant);
+      return;
+    }
 
     // Update current variant SKU
     this.dataset.currentVariantSku = newVariantSku;
 
-    // Find matching preorder variant
-    await this.#updatePreorderVariant(newVariantSku);
-  }
-
-  /**
-   * Update the preorder variant based on the selected main product variant
-   * @param {string} selectedSku - The SKU of the selected main product variant
-   */
-  async #updatePreorderVariant(selectedSku) {
-    const preorderProductId = this.dataset.preorderProductId;
-    
     try {
-      // Fetch the preorder product data
-      const response = await fetch(`${window.location.origin}/products/${this.#getProductHandle(preorderProductId)}.js`);
-      const preorderProduct = await response.json();
-
-      let matchingVariant = null;
-
-      // Strategy 1: Exact SKU match
-      matchingVariant = preorderProduct.variants.find(v => v.sku === selectedSku);
-
-      // Strategy 2: Pattern-based matching
-      if (!matchingVariant) {
-        const baseSku = selectedSku.replace(/-REGULAR|-REG/g, '');
-        matchingVariant = preorderProduct.variants.find(v => {
-          const preorderBaseSku = v.sku.replace(/-PREORDER|-PRE/g, '');
-          return baseSku === preorderBaseSku;
-        });
-      }
-
-      // Strategy 3: Match by variant position/index
-      if (!matchingVariant && preorderProduct.variants.length > 0) {
-        // Get the position of the selected variant in the main product
-        const mainProductResponse = await fetch(`${window.location.origin}/products/${window.location.pathname.split('/').pop()}.js`);
-        const mainProduct = await mainProductResponse.json();
-        const selectedVariantIndex = mainProduct.variants.findIndex(v => v.sku === selectedSku);
-        
-        if (selectedVariantIndex >= 0 && preorderProduct.variants[selectedVariantIndex]) {
-          matchingVariant = preorderProduct.variants[selectedVariantIndex];
-        }
-      }
-
-      // Fallback: Use first available variant
-      if (!matchingVariant) {
-        matchingVariant = preorderProduct.variants.find(v => v.available) || preorderProduct.variants[0];
-      }
-
+      // Find matching preorder variant
+      console.log('Finding matching preorder variant for SKU:', newVariantSku);
+      const matchingVariant = await this.#findMatchingPreorderVariant(newVariantSku);
+      
       if (matchingVariant) {
         // Update component data
         this.dataset.variantId = matchingVariant.id;
-        
-        // Update button state and price
         this.#updateButtonDisplay(matchingVariant);
         
         console.log('Preorder variant updated:', {
-          selectedSku: selectedSku,
+          selectedSku: newVariantSku,
           matchedVariant: matchingVariant.sku,
           matchedId: matchingVariant.id
         });
+      } else {
+        // No matching variant found
+        this.#updateButtonState(null);
+        console.warn('No matching preorder variant found for SKU:', newVariantSku);
       }
-
     } catch (error) {
       console.error('Error updating preorder variant:', error);
+      this.#updateButtonState(null);
+    }
+  }
+
+  /**
+   * Find matching preorder variant based on SKU
+   * @param {string} selectedSku - The SKU of the selected main product variant
+   * @returns {Promise<Object|null>} - The matching preorder variant or null
+   */
+  async #findMatchingPreorderVariant(selectedSku) {
+    if (!this.#preorderProduct) {
+      this.#preorderProduct = await this.#fetchPreorderProduct();
+    }
+
+    if (!this.#preorderProduct) {
+      return null;
+    }
+
+    const { variants } = this.#preorderProduct;
+
+    // Strategy 1: Exact SKU match
+    let matchingVariant = variants.find(v => v.sku === selectedSku);
+
+    if (!matchingVariant) {
+      // Strategy 2: Pattern-based matching
+      const baseSku = selectedSku.replace(/-REGULAR|-REG|-STOCK/g, '');
+      matchingVariant = variants.find(v => {
+        const preorderBaseSku = v.sku.replace(/-PREORDER|-PRE|-BACKORDER/g, '');
+        return baseSku === preorderBaseSku;
+      });
+    }
+
+    if (!matchingVariant) {
+      // Strategy 3: Match by variant position (if same number of variants)
+      const mainProductVariants = await this.#getMainProductVariants();
+      if (mainProductVariants && variants.length === mainProductVariants.length) {
+        const selectedVariantIndex = mainProductVariants.findIndex(v => v.sku === selectedSku);
+        if (selectedVariantIndex >= 0 && variants[selectedVariantIndex]) {
+          matchingVariant = variants[selectedVariantIndex];
+        }
+      }
+    }
+
+    if (!matchingVariant) {
+      // Fallback: Use first available variant
+      matchingVariant = variants.find(v => v.available) || variants[0];
+    }
+
+    return matchingVariant;
+  }
+
+  /**
+   * Fetch the preorder product data
+   * @returns {Promise<Object|null>}
+   */
+  async #fetchPreorderProduct() {
+    const preorderHandle = this.dataset.preorderHandle;
+    if (!preorderHandle) {
+      console.error('Preorder handle not found');
+      return null;
+    }
+
+    try {
+      const response = await fetch(`${window.location.origin}/products/${preorderHandle}.js`);
+      if (!response.ok) {
+        throw new Error(`Failed to fetch preorder product: ${response.status}`);
+      }
+      return await response.json();
+    } catch (error) {
+      console.error('Error fetching preorder product:', error);
+      return null;
+    }
+  }
+
+  /**
+   * Get main product variants
+   * @returns {Promise<Array|null>}
+   */
+  async #getMainProductVariants() {
+    try {
+      const currentPath = window.location.pathname;
+      const productHandle = currentPath.split('/').pop();
+      
+      const response = await fetch(`${window.location.origin}/products/${productHandle}.js`);
+      if (!response.ok) {
+        throw new Error(`Failed to fetch main product: ${response.status}`);
+      }
+      const product = await response.json();
+      return product.variants;
+    } catch (error) {
+      console.error('Error fetching main product variants:', error);
+      return null;
     }
   }
 
   /**
    * Update button display with new variant info
-   * @param {Object} variant - The matched preorder variant
+   * @param {Object|null} variant - The matched preorder variant
    */
   #updateButtonDisplay(variant) {
     const button = this.querySelector('[data-preorder-button]');
-    const priceElement = button.querySelector('.preorder-text__content');
+    const priceElement = button?.querySelector('.preorder-text__content');
     
-    if (priceElement) {
-      // Format price (you might need to adjust this based on your currency settings)
-      const formattedPrice = new Intl.NumberFormat('en-US', {
-        style: 'currency',
-        currency: 'USD' // Change to your store currency
-      }).format(variant.price / 100);
-      
-      priceElement.textContent = `Pre-order - ${formattedPrice}`;
-    }
+    if (!button || !priceElement) return;
 
-    // Update button availability
-    button.disabled = !variant.available;
-    
-    if (!variant.available) {
-      priceElement.textContent = 'Pre-order - Unavailable';
+    if (variant) {
+      // Enable button and update price
+      button.disabled = !variant.available;
+      
+      if (variant.available) {
+        const formattedPrice = new Intl.NumberFormat(document.documentElement.lang || 'en', {
+          style: 'currency',
+          currency: Theme.currency?.active || 'USD'
+        }).format(variant.price / 100);
+        
+        priceElement.textContent = `Pre-order - ${formattedPrice}`;
+      } else {
+        priceElement.textContent = 'Pre-order - Unavailable';
+      }
+    } else {
+      // Disable button if no variant found
+      button.disabled = true;
+      priceElement.textContent = 'Pre-order - Not Available';
     }
   }
 
   /**
-   * Get product handle from product ID (you might need to implement this differently)
-   * @param {string} productId 
-   * @returns {string}
+   * Update button state based on variant availability
+   * @param {Object|null} variant 
    */
-  #getProductHandle(productId) {
-    // This is a simplified approach - you might need to store the handle as data attribute
-    // or use a different method to get the preorder product handle
-    return `preorder-${window.location.pathname.split('/').pop()}`;
+  #updateButtonState(variant) {
+    const button = this.querySelector('[data-preorder-button]');
+    if (!button) return;
+
+    button.disabled = !variant || !variant.available;
   }
 
   /**
    * Handles the click event for the pre-order button.
    * @param {MouseEvent} event - The click event.
    */
-  async handleClick(event) {
+  async #handleClick(event) {
     event.preventDefault();
     
     const button = event.target.closest('[data-preorder-button]');
@@ -636,13 +731,16 @@ class PreorderButtonComponent extends Component {
 
     // Disable button and show loading state
     button.disabled = true;
-    this.animatePreorder();
+    this.#animatePreorder();
+
+    // Get quantity from the main product form or default to 1
+    const quantity = this.#getSelectedQuantity();
 
     try {
       // Prepare form data
       const formData = new FormData();
       formData.append('id', variantId);
-      formData.append('quantity', '1');
+      formData.append('quantity', quantity.toString());
       
       // Add comprehensive properties to identify this as a pre-order
       formData.append('properties[_preorder]', 'true');
@@ -653,23 +751,15 @@ class PreorderButtonComponent extends Component {
       formData.append('properties[_preorder_for]', this.#getMainProductHandle());
 
       // Add cart items sections for update
-      const cartItemsComponents = document.querySelectorAll('cart-items-component');
-      let cartItemComponentsSectionIds = [];
-      cartItemsComponents.forEach((item) => {
-        if (item instanceof HTMLElement && item.dataset.sectionId) {
-          cartItemComponentsSectionIds.push(item.dataset.sectionId);
-        }
-      });
-      if (cartItemComponentsSectionIds.length > 0) {
-        formData.append('sections', cartItemComponentsSectionIds.join(','));
-      }
+      this.#addCartSections(formData);
+
+      const fetchCfg = fetchConfig('javascript', { body: formData });
 
       const response = await fetch(Theme.routes.cart_add_url, {
-        method: 'POST',
-        body: formData,
+        ...fetchCfg,
         headers: {
-          'Accept': 'application/json',
-          'X-Requested-With': 'XMLHttpRequest'
+          ...fetchCfg.headers,
+          Accept: 'application/json',
         }
       });
 
@@ -683,34 +773,87 @@ class PreorderButtonComponent extends Component {
         window.dispatchEvent(new CartErrorEvent(this.id, result.message));
         
         // Show error feedback
-        this.showError(result.message);
+        this.#showError(result.message);
       } else {
-        // Success - dispatch cart add event
-        window.dispatchEvent(new CartAddEvent({}, variantId, {
+        // Success - dispatch cart add event with proper item count calculation
+        const actualItemCount = quantity; // Use the actual quantity added
+        
+        // Dispatch the cart add event to update cart icon and drawer
+        const cartAddEvent = new CartAddEvent({}, variantId, {
           source: 'preorder-button-component',
-          itemCount: 1,
-          productId: preorderProductId, // Use preorder product ID
-          originalProductId: originalProductId, // Keep reference to original
+          itemCount: actualItemCount,
+          productId: preorderProductId,
+          originalProductId: originalProductId,
           sections: result.sections,
           isPreorder: true
-        }));
+        });
+        
+        // Dispatch at both component and window level for better compatibility
+        this.dispatchEvent(cartAddEvent);
+        window.dispatchEvent(cartAddEvent);
+        document.dispatchEvent(cartAddEvent);
+
+        // Also trigger cart update event for cart drawer and icon
+        const cartUpdateEvent = new CartUpdateEvent({}, this.id, {
+          itemCount: actualItemCount,
+          source: 'preorder-button-component',
+          sections: result.sections
+        });
+        
+        document.dispatchEvent(cartUpdateEvent);
+        window.dispatchEvent(cartUpdateEvent);
 
         // Trigger fly-to-cart animation
         this.#animateFlyToCart(button);
 
-        // Optional: Show success message
-        this.#showSuccessMessage();
+        console.log(`Successfully added pre-order item to cart (quantity: ${actualItemCount})`);
       }
 
     } catch (error) {
       console.error('Pre-order request failed:', error);
-      this.showError('Something went wrong. Please try again.');
+      this.#showError('Something went wrong. Please try again.');
     } finally {
       // Re-enable button after animation
       setTimeout(() => {
         button.disabled = false;
         this.classList.remove('preorder-added');
-      }, 2500);
+      }, PREORDER_ANIMATION_DURATION + 500);
+
+      // Track performance
+      cartPerformance.measureFromEvent('preorder-add:user-action', event);
+    }
+  }
+
+  /**
+   * Get selected quantity from the main product form
+   * @returns {number}
+   */
+  #getSelectedQuantity() {
+    // Look for quantity input in the closest product form
+    const productForm = this.closest('.product-information, .product-card');
+    const quantityInput = productForm?.querySelector('input[name="quantity"]') || 
+                          document.querySelector('input[name="quantity"]');
+    
+    const quantity = quantityInput ? parseInt(quantityInput.value, 10) : 1;
+    return isNaN(quantity) || quantity < 1 ? 1 : quantity;
+  }
+
+  /**
+   * Add cart sections to form data for proper cart update
+   * @param {FormData} formData 
+   */
+  #addCartSections(formData) {
+    const cartItemsComponents = document.querySelectorAll('cart-items-component');
+    const sectionIds = [];
+    
+    cartItemsComponents.forEach((item) => {
+      if (item instanceof HTMLElement && item.dataset.sectionId) {
+        sectionIds.push(item.dataset.sectionId);
+      }
+    });
+    
+    if (sectionIds.length > 0) {
+      formData.append('sections', sectionIds.join(','));
     }
   }
 
@@ -723,18 +866,9 @@ class PreorderButtonComponent extends Component {
   }
 
   /**
-   * Show success message
-   */
-  #showSuccessMessage() {
-    // You can customize this to show a toast notification or other success indicator
-    const productTitle = this.querySelector('[data-preorder-product-title]')?.textContent || 'Pre-order item';
-    console.log(`Successfully added ${productTitle} to cart for pre-order`);
-  }
-
-  /**
    * Animates the pre-order button state change.
    */
-  animatePreorder() {
+  #animatePreorder() {
     if (this.#animationTimeout) clearTimeout(this.#animationTimeout);
     if (this.#cleanupTimeout) clearTimeout(this.#cleanupTimeout);
 
@@ -746,21 +880,26 @@ class PreorderButtonComponent extends Component {
       this.#cleanupTimeout = setTimeout(() => {
         this.classList.remove('preorder-added');
       }, 10);
-    }, ADD_TO_CART_TEXT_ANIMATION_DURATION);
+    }, PREORDER_ANIMATION_DURATION);
   }
 
   /**
    * Shows error message to user.
    * @param {string} message - Error message to display.
    */
-  showError(message) {
+  #showError(message) {
     const button = this.querySelector('[data-preorder-button]');
-    const originalText = button.querySelector('.preorder-text__content').textContent;
+    const textElement = button?.querySelector('.preorder-text__content');
     
-    button.querySelector('.preorder-text__content').textContent = 'Error - try again';
+    if (!textElement) return;
+
+    const originalText = textElement.textContent;
+    textElement.textContent = 'Error - try again';
     
     setTimeout(() => {
-      button.querySelector('.preorder-text__content').textContent = originalText;
+      if (textElement) {
+        textElement.textContent = originalText;
+      }
     }, 3000);
   }
 
@@ -774,9 +913,8 @@ class PreorderButtonComponent extends Component {
     if (!cartIcon || !sourceButton) return;
 
     // Get preorder product image for the flying animation
-    const preorderProductImage = this.querySelector('[data-preorder-product-image]')?.src || 
-                                 document.querySelector('.product-information__media img')?.src || '';
-
+    const preorderProductImage = this.querySelector('[data-preorder-product-image]')?.src;
+    
     if (!preorderProductImage) return;
 
     // Create and trigger fly-to-cart element
